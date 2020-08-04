@@ -39,22 +39,28 @@ class EntityEncoder:
         if self.encoder is None:
             raise ValueError("Can not apply encoder before training it")
 
-        batch_size = 100000
+        #batch_size = 100000
+        batch_size = 10000
 
         start = 0
         stop = min(batch_size, len(description_list))
         encodings = []
 
         while start < len(description_list):
-            docs = list(self.nlp.pipe(description_list[start:stop]))
-            doc_embeddings = [self._get_doc_embedding(doc) for doc in docs]
-            enc = self.encoder(np.asarray(doc_embeddings))
-            encodings.extend(enc.tolist())
+            try:
+                docs = list(self.nlp.pipe(description_list[start:stop]))
+                doc_embeddings = [self._get_doc_embedding(doc) for doc in docs]
+                enc = self.encoder(np.asarray(doc_embeddings))
+                encodings.extend(enc.tolist())
 
-            start = start + batch_size
-            stop = min(stop + batch_size, len(description_list))
-            logger.info("Encoded: {} entities".format(stop))
-
+                start = start + batch_size
+                stop = min(stop + batch_size, len(description_list))
+                logger.info("Encoded: {} entities {},{}".format(stop,start,len(description_list)))
+            except Exception as exception:
+                logger.error(exception, exc_info=True)
+                logger.info("Error with one of the following items: {}".format(description_list[start:stop]))
+                import sys
+                sys.exit(-1)
         return encodings
 
     def train(self, description_list, to_print=False):
@@ -86,18 +92,24 @@ class EntityEncoder:
             stop = min(self.BATCH_SIZE, len(descriptions))
 
             while to_continue and start < len(descriptions):
+                print(loss, batch_nr)
                 batch = []
+                counter=0
                 for descr in descriptions[start:stop]:
+                    if counter%100==0:
+                        logger.info("Loaded {}/{} descriptions".format(counter, len(descriptions)))
+                    counter += 1
                     doc = self.nlp(descr)
                     doc_vector = self._get_doc_embedding(doc)
                     batch.append(doc_vector)
-
+                print("Finished loading batch")
                 loss = self._update(batch)
                 if batch_nr % 25 == 0:
                     logger.info("loss: {} ".format(loss))
                 processed += len(batch)
 
                 # in general, continue training if we haven't reached our ideal min yet
+                loss = 0.005
                 to_continue = loss > self.MIN_LOSS
 
                 # store the best loss and track how long it's been

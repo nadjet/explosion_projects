@@ -11,7 +11,6 @@ from __future__ import unicode_literals
 
 import random
 import logging
-import spacy
 from pathlib import Path
 import plac
 from tqdm import tqdm
@@ -22,6 +21,8 @@ from entity_linker_evaluation import measure_performance
 from kb_creator import read_kb
 
 from spacy.util import minibatch, compounding
+
+from utils.vec2model import create_model
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,12 @@ logger = logging.getLogger(__name__)
     train_articles=("# training articles (default 90% of all)", "option", "t", int),
     dev_articles=("# dev test articles (default 10% of all)", "option", "d", int),
     labels_discard=("NER labels to discard (default None)", "option", "l", str),
+    # the following 4 options are added to create nlp pipeline for languages such as Swedish, without predefined model
+    # a model is created with specified vectors + using spacy-stanza
+    stz=("Whether to use spacy-stanza. Defaults to 'True'", "option", "stz", str),
+    vectors_name=("Vectors name. Defaults to 'fasttext'","option","vname",str),
+    vectors_loc=("Path to the vectors file", "option", "vec", Path),
+    lang=("Optional language for which to get Wikidata titles. Defaults to 'sv'", "option", "la", str),
 )
 def main(
     dir_kb,
@@ -49,6 +56,10 @@ def main(
     train_articles=None,
     dev_articles=None,
     labels_discard=None,
+    stz=True,
+    vectors_name='fasttext',
+    vectors_loc=None,
+    lang='sv'
 ):
     if not output_dir:
         logger.warning(
@@ -68,8 +79,11 @@ def main(
         output_dir.mkdir()
 
     # STEP 1 : load the NLP object
-    logger.info("STEP 1a: Loading model from {}".format(nlp_dir))
-    nlp = spacy.load(nlp_dir)
+    #logger.info("STEP 1a: Loading model from {}".format(nlp_dir))
+    #nlp = spacy.load(nlp_dir)
+    logger.info("STEP 1: Creating NLP model for language {} with stanza set to '{}'".format(lang,stz))
+    nlp = create_model(vectors_loc=vectors_loc, lang=lang, stz=stz, vectors_name=vectors_name, max_items=100)
+
     logger.info(
         "Original NLP pipeline has following pipeline components: {}".format(
             nlp.pipe_names
@@ -77,8 +91,8 @@ def main(
     )
 
     # check that there is a NER component in the pipeline
-    if "ner" not in nlp.pipe_names:
-        raise ValueError("The `nlp` object should have a pretrained `ner` component.")
+    #if "ner" not in nlp.pipe_names:
+    #    raise ValueError("The `nlp` object should have a pretrained `ner` component.")
 
     logger.info("STEP 1b: Loading KB from {}".format(kb_path))
     kb = read_kb(nlp, kb_path)
@@ -114,6 +128,7 @@ def main(
         )
     else:
         labels_discard = []
+
 
     el_pipe = nlp.create_pipe(
         name="entity_linker",
@@ -222,5 +237,5 @@ def main(
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+    logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
     plac.call(main)

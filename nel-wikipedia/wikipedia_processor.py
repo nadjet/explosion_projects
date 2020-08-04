@@ -493,6 +493,7 @@ def read_el_docs_golds(nlp, entity_file_path, dev, line_ids, kb, labels_discard=
                     continue
 
                 doc = nlp(clean_text)
+                print(clean_text)
                 gold = _get_gold_parse(
                     doc, entities, dev=dev, kb=kb, labels_discard=labels_discard
                 )
@@ -502,8 +503,10 @@ def read_el_docs_golds(nlp, entity_file_path, dev, line_ids, kb, labels_discard=
             line = _file.readline()
 
 
-def _get_gold_parse(doc, entities, dev, kb, labels_discard):
+def _get_gold_parse(doc, entities, dev, kb, labels_discard, consider_nes=False):
     gold_entities = {}
+
+
     tagged_ent_positions = {
         (ent.start_char, ent.end_char): ent
         for ent in doc.ents
@@ -515,14 +518,18 @@ def _get_gold_parse(doc, entities, dev, kb, labels_discard):
         alias = entity["alias"]
         start = entity["start"]
         end = entity["end"]
+        print(entity_id,alias,start,end)
 
         candidate_ids = []
         if kb and not dev:
             candidates = kb.get_candidates(alias)
+            print("LENGTH=",len(candidates))
+            for cand in candidates:
+                print("HELLO=",cand.entity_)
             candidate_ids = [cand.entity_ for cand in candidates]
 
         tagged_ent = tagged_ent_positions.get((start, end), None)
-        if tagged_ent:
+        if tagged_ent and consider_nes:
             # TODO: check that alias == doc.text[start:end]
             should_add_ent = (dev or entity_id in candidate_ids) and is_valid_sentence(
                 tagged_ent.sent.text
@@ -536,6 +543,8 @@ def _get_gold_parse(doc, entities, dev, kb, labels_discard):
                         {kb_id: 0.0 for kb_id in candidate_ids if kb_id != entity_id}
                     )
                 gold_entities[(start, end)] = value_by_id
+        elif not consider_nes:
+            gold_entities[(start, end)] = {entity_id: 1.0}
 
     return GoldParse(doc, links=gold_entities)
 

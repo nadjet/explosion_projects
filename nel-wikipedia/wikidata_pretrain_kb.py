@@ -25,6 +25,8 @@ from wiki_io import TRAINING_DATA_FILE, KB_FILE, ENTITY_DESCR_PATH, KB_MODEL_DIR
 from wiki_io import ENTITY_FREQ_PATH, PRIOR_PROB_PATH, ENTITY_DEFS_PATH, ENTITY_ALIAS_PATH
 import kb_creator
 
+from utils.vec2model import create_model
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,7 +34,6 @@ logger = logging.getLogger(__name__)
     wd_json=("Path to the downloaded WikiData JSON dump.", "positional", None, Path),
     wp_xml=("Path to the downloaded Wikipedia XML dump.", "positional", None, Path),
     output_dir=("Output directory", "positional", None, Path),
-    model=("Model name or path, should include pretrained vectors.", "positional", None, str),
     max_per_alias=("Max. # entities per alias (default 10)", "option", "a", int),
     min_freq=("Min. count of an entity in the corpus (default 20)", "option", "f", int),
     min_pair=("Min. count of entity-alias pairs (default 5)", "option", "c", int),
@@ -44,13 +45,19 @@ logger = logging.getLogger(__name__)
     limit_prior=("Threshold to limit lines read from WP for prior probabilities", "option", "lp", int),
     limit_train=("Threshold to limit lines read from WP for training set", "option", "lt", int),
     limit_wd=("Threshold to limit lines read from WD", "option", "lw", int),
-    lang=("Optional language for which to get Wikidata titles. Defaults to 'en'", "option", "la", str),
+    lang=("Optional language for which to get Wikidata titles. Defaults to 'sv'", "option", "la", str),
+    # the following 3 options are added to create nlp pipeline for languages such as Swedish, without predefined model
+    # a model is created with specified vectors + using spacy-stanza
+    stz=("Whether to use spacy-stanza. Defaults to 'True'", "option", "stz", str),
+    vectors_name=("Vectors name. Defaults to 'fasttext'","option","vname",str),
+    vectors_loc=("Path to the vectors file", "option", "vec", Path),
+    # model argument is made optional as if model constructed from stanza, it's not specified
+    model=("Model name or path, should include pretrained vectors.", "option", "mod", str),
 )
 def main(
     wd_json,
     wp_xml,
     output_dir,
-    model,
     max_per_alias=10,
     min_freq=20,
     min_pair=5,
@@ -63,7 +70,11 @@ def main(
     limit_prior=None,
     limit_train=None,
     limit_wd=None,
-    lang="en",
+    lang="sv",
+    stz=True,
+    vectors_name='fasttext',
+    vectors_loc=None,
+    model=None
 ):
     entity_defs_path = loc_entity_defs if loc_entity_defs else output_dir / ENTITY_DEFS_PATH
     entity_alias_path = loc_entity_alias if loc_entity_alias else output_dir / ENTITY_ALIAS_PATH
@@ -80,8 +91,12 @@ def main(
         output_dir.mkdir(parents=True)
 
     # STEP 1: Load the NLP object
-    logger.info("STEP 1: Loading NLP model {}".format(model))
-    nlp = spacy.load(model)
+    if model is not None:
+        logger.info("STEP 1: Loading NLP model '{}' for language '{}'".format(model, lang))
+        nlp = spacy.load(model)
+    else:  
+        logger.info("STEP 1: Creating NLP model for language {} with stanza set to '{}'".format(lang,stz)) 
+        nlp = create_model(vectors_loc=vectors_loc, lang=lang, stz=stz, vectors_name=vectors_name, max_items=10)
 
     # check the length of the nlp vectors
     if "vectors" not in nlp.meta or not nlp.vocab.vectors.size:
